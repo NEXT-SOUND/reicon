@@ -41,6 +41,35 @@ function rewriteColors(svg) {
   return svg.replace(/fill="white"/g, 'fill="currentColor"');
 }
 
+// Path data in a 24px box keeps two decimals (NEXT-SOUND, 2026-11-07): the source's four or five cost about a fifth of
+// every icon module's bytes and are invisible at any size an icon is drawn. Zeros before the point are dropped. A
+// number that follows another without a separator gets a space unless it starts with "." after a number that already
+// has its point (".996" after "2.5" rounding to "1" would otherwise read as "2.51").
+const PATH_DECIMALS = 2;
+
+function roundNumber(token) {
+  const rounded = Number(Number(token).toFixed(PATH_DECIMALS));
+  return String(Object.is(rounded, -0) ? 0 : rounded).replace(/^(-?)0\./, '$1.');
+}
+
+function roundPathData(svg) {
+  return svg.replace(/ d="([^"]*)"/g, (_, d) => {
+    let out = '';
+    let last = 0;
+    for (const match of d.matchAll(/-?\d*\.\d+(?:e-?\d+)?/g)) {
+      const before = d.slice(last, match.index);
+      let value = roundNumber(match[0]);
+      const previous = (out + before).slice(-1);
+      if (/[\d.]/.test(previous) && !value.startsWith('-') && (!value.startsWith('.') || !(out + before).match(/\.\d*$/))) {
+        value = ' ' + value;
+      }
+      out += before + value;
+      last = match.index + match[0].length;
+    }
+    return ` d="${out + d.slice(last)}"`;
+  });
+}
+
 function escapeForJS(s) {
   return s.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$\{/g, '\\${');
 }
@@ -84,7 +113,7 @@ for (const [catKey, catData] of Object.entries(data.categories || {})) {
     for (const [wName, wData] of Object.entries(icon.weights || {})) {
       const short = W_KEY[wName];
       if (short && wData.code) {
-        weights[short] = rewriteColors(stripSvgWrapper(wData.code));
+        weights[short] = roundPathData(rewriteColors(stripSvgWrapper(wData.code)));
       }
     }
 
